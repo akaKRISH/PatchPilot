@@ -38,11 +38,21 @@ SECRET_FILENAMES = {
 }
 
 
+def _normalize_extended_path(p: Path) -> Path:
+    """Normalize Windows extended-length path prefix (\\?\\) so containment checks match."""
+    s = str(p)
+    if s.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + s[8:])
+    if s.startswith("\\\\?\\"):
+        return Path(s[4:])
+    return p
+
+
 class PathPolicy:
     """Enforces strict path containment inside an authorized root directory."""
 
     def __init__(self, root_dir: Path, max_file_bytes: int = 200_000) -> None:
-        self.root_dir = root_dir.resolve()
+        self.root_dir = _normalize_extended_path(root_dir.resolve())
         self.max_file_bytes = max_file_bytes
 
     def is_secret_or_excluded(self, path: Path) -> bool:
@@ -85,11 +95,12 @@ class PathPolicy:
         # On POSIX, a Windows drive-qualified path (e.g. C:\...) or UNC path (\\...)
         # is not considered absolute by native pathlib.Path and would otherwise be treated
         # as a relative file inside workspace.
-        if os.name != "nt":
-            if win_pure.is_absolute() or win_pure.drive or raw_str.startswith("\\\\"):
-                raise PathTraversalError(
-                    f"Windows drive-qualified or absolute path outside workspace: '{raw_str}'"
-                )
+        if os.name != "nt" and (
+            win_pure.is_absolute() or win_pure.drive or raw_str.startswith("\\\\")
+        ):
+            raise PathTraversalError(
+                f"Windows drive-qualified or absolute path outside workspace: '{raw_str}'"
+            )
 
         # UNC or network share paths (e.g. \\server\share or //server/share)
         if raw_str.startswith(("\\\\", "//")):
@@ -111,12 +122,13 @@ class PathPolicy:
 
         # Check if candidate path is absolute on the current platform, or root-relative on Windows (e.g. /etc/passwd or \Windows)
         if candidate.is_absolute() or (os.name == "nt" and raw_str.startswith(("/", "\\"))):
+            norm_candidate = _normalize_extended_path(candidate)
             try:
-                if not candidate.is_relative_to(self.root_dir):
+                if not norm_candidate.is_relative_to(self.root_dir):
                     raise PathTraversalError(
                         f"Absolute path '{candidate_path}' is outside root '{self.root_dir}'"
                     )
-                rel_candidate = candidate.relative_to(self.root_dir)
+                rel_candidate = norm_candidate.relative_to(self.root_dir)
             except ValueError as e:
                 raise PathTraversalError(
                     f"Path '{candidate_path}' is outside root '{self.root_dir}'"
@@ -136,6 +148,8 @@ class PathPolicy:
                 else:
                     resolved_target = target.resolve()
 
+                resolved_target = _normalize_extended_path(resolved_target)
+
                 try:
                     if not resolved_target.is_relative_to(self.root_dir):
                         raise SymlinkEscapeError(
@@ -151,7 +165,7 @@ class PathPolicy:
                 current = resolved_target
 
         # 5. Canonical resolution & final root containment check
-        resolved = current.resolve()
+        resolved = _normalize_extended_path(current.resolve())
         try:
             if not resolved.is_relative_to(self.root_dir):
                 raise PathTraversalError(
