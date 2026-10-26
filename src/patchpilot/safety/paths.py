@@ -1,7 +1,7 @@
 """Centralized path safety validation preventing directory traversal, escapes, and secret leaks."""
 
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from patchpilot.errors import PathTraversalError, SecretAccessError, SymlinkEscapeError
 
@@ -66,50 +66,103 @@ class PathPolicy:
         """Resolve candidate path and verify it remains strictly inside root_dir.
 
         Raises:
-            PathTraversalError: If path attempts to escape root_dir.
+            PathTraversalError: If path attempts to escape root_dir or uses foreign absolute forms.
             SymlinkEscapeError: If path traverses a symlink targeting outside root_dir.
             SecretAccessError: If path targets a secret or protected file.
+            FileNotFoundError: If must_exist is True and the target does not exist.
         """
         raw_str = str(candidate_path)
         if "\0" in raw_str:
             raise PathTraversalError("Null byte detected in file path.")
 
-        # If candidate is absolute, ensure it starts with root_dir
-        candidate = Path(candidate_path)
-        if candidate.is_absolute():
-            resolved = candidate.resolve()
-        else:
-            # Prevent simple '..' traversal in path string before join
-            norm = os.path.normpath(raw_str)
-            if norm.startswith("..") or ("../" in raw_str) or ("..\\" in raw_str):
-                raise PathTraversalError(
-                    f"Directory traversal ('..') detected in path: '{raw_str}'"
-                )
-            resolved = (self.root_dir / candidate).resolve()
+        # 1. Directory traversal components check across all separator styles (/ and \)
+        # PureWindowsPath parses both forward slash and backslash on all platforms.
+        win_pure = PureWindowsPath(raw_str)
+        if ".." in win_pure.parts:
+            raise PathTraversalError(f"Directory traversal ('..') detected in path: '{raw_str}'")
 
-        # Check boundary containment
+        # 2. Foreign-platform absolute and drive-qualified forms
+        # On POSIX, a Windows drive-qualified path (e.g. C:\...) or UNC path (\\...)
+        # is not considered absolute by native pathlib.Path and would otherwise be treated
+        # as a relative file inside workspace.
+        if os.name != "nt":
+            if win_pure.is_absolute() or win_pure.drive or raw_str.startswith("\\\\"):
+                raise PathTraversalError(
+                    f"Windows drive-qualified or absolute path outside workspace: '{raw_str}'"
+                )
+
+        # UNC or network share paths (e.g. \\server\share or //server/share)
+        if raw_str.startswith(("\\\\", "//")):
+            raise PathTraversalError(f"UNC or network path not permitted: '{raw_str}'")
+
+        # Drive check on Windows: reject drives different from root_dir
+        if (
+            os.name == "nt"
+            and win_pure.drive
+            and self.root_dir.drive
+            and win_pure.drive.lower() != self.root_dir.drive.lower()
+        ):
+            raise PathTraversalError(
+                f"Path on drive '{win_pure.drive}' is outside workspace root '{self.root_dir}'"
+            )
+
+        # 3. Determine if candidate is an absolute path or relative path
+        candidate = Path(candidate_path)
+
+        # Check if candidate path is absolute on the current platform, or root-relative on Windows (e.g. /etc/passwd or \Windows)
+        if candidate.is_absolute() or (os.name == "nt" and raw_str.startswith(("/", "\\"))):
+            try:
+                if not candidate.is_relative_to(self.root_dir):
+                    raise PathTraversalError(
+                        f"Absolute path '{candidate_path}' is outside root '{self.root_dir}'"
+                    )
+                rel_candidate = candidate.relative_to(self.root_dir)
+            except ValueError as e:
+                raise PathTraversalError(
+                    f"Path '{candidate_path}' is outside root '{self.root_dir}'"
+                ) from e
+        else:
+            # Candidate is a relative path
+            rel_candidate = candidate
+
+        # 4. Check for symlink escapes component by component before resolving
+        current = self.root_dir
+        for part in rel_candidate.parts:
+            current = current / part
+            if current.is_symlink():
+                target = current.readlink()
+                if not target.is_absolute():
+                    resolved_target = (current.parent / target).resolve()
+                else:
+                    resolved_target = target.resolve()
+
+                try:
+                    if not resolved_target.is_relative_to(self.root_dir):
+                        raise SymlinkEscapeError(
+                            f"Symlink '{current}' targets '{resolved_target}' outside root '{self.root_dir}'"
+                        )
+                except ValueError as e:
+                    raise SymlinkEscapeError(
+                        f"Symlink '{current}' targets '{resolved_target}' outside root '{self.root_dir}'"
+                    ) from e
+
+                # Symlink stays inside workspace; update current to the resolved target so
+                # any subsequent path components are evaluated from the target.
+                current = resolved_target
+
+        # 5. Canonical resolution & final root containment check
+        resolved = current.resolve()
         try:
-            resolved.relative_to(self.root_dir)
+            if not resolved.is_relative_to(self.root_dir):
+                raise PathTraversalError(
+                    f"Path '{candidate_path}' resolves to '{resolved}', which is outside root '{self.root_dir}'"
+                )
         except ValueError as e:
             raise PathTraversalError(
                 f"Path '{candidate_path}' resolves to '{resolved}', which is outside root '{self.root_dir}'"
             ) from e
 
-        # Check for symlink escaping boundary
-        if resolved.is_symlink():
-            target = resolved.readlink()
-            if not target.is_absolute():
-                target = (resolved.parent / target).resolve()
-            else:
-                target = target.resolve()
-            try:
-                target.relative_to(self.root_dir)
-            except ValueError as e:
-                raise SymlinkEscapeError(
-                    f"Symlink '{resolved}' targets '{target}' outside root '{self.root_dir}'"
-                ) from e
-
-        # Check for secret access
+        # 6. Check for secret or excluded files
         if self.is_secret_or_excluded(resolved):
             raise SecretAccessError(
                 f"Access to sensitive or excluded file '{resolved.name}' is prohibited."
