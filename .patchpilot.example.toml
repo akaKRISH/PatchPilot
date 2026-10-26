@@ -1,0 +1,24 @@
+# PatchPilot TOML Configuration Example
+# Place this at .patchpilot.toml or specify via CLI/environment.
+# Environment variables override options specified in this file.
+
+[model]
+name = "qwen3.5:4b"
+ollama_base_url = "http://localhost:11434"
+request_timeout_seconds = 120
+think = false
+
+[agent]
+max_repair_attempts = 3
+max_agent_steps = 12
+max_tool_calls = 24
+max_context_characters = 50000
+
+[safety]
+max_file_bytes = 200000
+test_timeout_seconds = 120
+max_command_output_characters = 20000
+allow_host_execution = false
+
+[storage]
+data_dir = ".patchpilot-data"

@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "cases": [
+    {
+      "case_id": "calculator_bug",
+      "name": "Calculator Addition Bug",
+      "description": "Fix bug in add function without breaking other arithmetic operations",
+      "source_dir": "examples/buggy_python_project",
+      "task_description": "Fix the bug in the calculator's add function. Preserve the public API and ensure all tests pass.",
+      "test_suite": "pytest",
+      "targeted_test": "tests/test_calculator.py",
+      "expected_status": "FIXED"
+    }
+  ]
+}

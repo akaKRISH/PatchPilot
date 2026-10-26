@@ -1,0 +1,7 @@
+{
+  "task_id": "calculator_bug",
+  "task_description": "Fix the bug in the calculator's add function. Preserve the public API and ensure all tests pass.",
+  "test_suite": "pytest",
+  "targeted_test": "tests/test_calculator.py",
+  "file_to_modify": "calculator.py"
+}
