@@ -62,8 +62,8 @@ Executes local evaluation cases from `evals/cases/manifest.json`.
 ### "Ollama is not running at http://localhost:11434"
 Start Ollama via the Windows start menu or run `ollama serve` in a background terminal.
 
-### "Model 'qwen3.5:9b' not found"
-Download the model using `ollama pull qwen3.5:9b`.
+### "Model 'qwen3.5:4b' not found"
+Download the model using `ollama pull qwen3.5:4b`.
 
 ### "Docker sandbox is unavailable"
 To protect your machine, PatchPilot will not run untrusted tests directly on your host by default. Either start Docker Desktop and run `docker build -t patchpilot-sandbox:latest sandbox/`, or explicitly pass `--allow-host-execution` if you trust the repository.

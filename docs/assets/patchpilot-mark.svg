@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" fill="none">
+  <defs>
+    <linearGradient id="ppGrad" x1="16" y1="16" x2="104" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#0284C7"/>
+      <stop offset="100%" stop-color="#0369A1"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="60" y1="20" x2="60" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0.05"/>
+    </linearGradient>
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Ambient Rounded Background Badge -->
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#090D16" stroke="#1E293B" stroke-width="2"/>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#glowGrad)"/>
+
+  <!-- Circuit & Grid Alignment Nodes -->
+  <circle cx="28" cy="28" r="2.5" fill="#38BDF8" opacity="0.6"/>
+  <circle cx="92" cy="28" r="2.5" fill="#38BDF8" opacity="0.6"/>
+  <circle cx="28" cy="92" r="2.5" fill="#38BDF8" opacity="0.6"/>
+  <circle cx="92" cy="92" r="2.5" fill="#38BDF8" opacity="0.6"/>
+  
+  <path d="M28 28 L38 28 M82 28 L92 28 M28 92 L38 92 M82 92 L92 92" stroke="#38BDF8" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <path d="M28 28 L28 38 M92 28 L92 38 M28 92 L28 82 M92 92 L92 82" stroke="#38BDF8" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Precision Crosshair Guides (Radar / Pilot Navigation) -->
+  <circle cx="60" cy="60" r="38" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <line x1="60" y1="14" x2="60" y2="22" stroke="#38BDF8" stroke-width="2" stroke-linecap="round"/>
+  <line x1="60" y1="98" x2="60" y2="106" stroke="#38BDF8" stroke-width="2" stroke-linecap="round"/>
+  <line x1="14" y1="60" x2="22" y2="60" stroke="#38BDF8" stroke-width="2" stroke-linecap="round"/>
+  <line x1="98" y1="60" x2="106" y2="60" stroke="#38BDF8" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Hexagonal Repair Shield / Patch Geometry -->
+  <path d="M60 25 L88 41 L88 73 L60 89 L32 73 L32 41 Z" fill="#0F172A" stroke="url(#ppGrad)" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- Pilot Diamond / Navigation Compass Core -->
+  <path d="M60 34 L78 60 L60 86 L42 60 Z" fill="#0284C7" fill-opacity="0.15" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+  <!-- Verified Check / Repair Notch (Bold Central Glyph) -->
+  <path d="M47 61 L56 70 L75 49" stroke="#38BDF8" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#subtleGlow)"/>
+  <path d="M47 61 L56 70 L75 49" stroke="#F0F9FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Status Ping / Self-Healing Signal -->
+  <circle cx="75" cy="49" r="3" fill="#38BDF8"/>
+  <circle cx="75" cy="49" r="6" stroke="#38BDF8" stroke-width="1" opacity="0.5"/>
+</svg>
