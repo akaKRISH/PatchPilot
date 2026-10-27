@@ -22,8 +22,14 @@ PatchPilot measures coding agent effectiveness using deterministic verification 
 
 ## Running the Smoke Benchmark
 
+Benchmark evaluation runs against `evals/cases/manifest.json`. By default, cases execute safely inside isolated Docker containers:
+
 ```powershell
-python -m patchpilot eval --suite smoke
+# Safe containerized benchmark execution (default)
+patchpilot eval --suite smoke
+
+# Explicit unsafe host execution (prints warning)
+patchpilot eval --suite smoke --allow-host-execution
 ```
 
-The benchmark runs against `evals/cases/manifest.json`. Results are reported in a structured summary and appended to `.patchpilot-data/events.jsonl`.
+Results are reported in a structured summary table and appended to `.patchpilot-data/events.jsonl`.
