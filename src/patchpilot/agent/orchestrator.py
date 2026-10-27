@@ -7,7 +7,7 @@ from pathlib import Path
 
 from patchpilot.agent.repair_loop import RepairLoop
 from patchpilot.config import PatchPilotConfig
-from patchpilot.errors import OriginalRepositoryModifiedError, PatchPilotError
+from patchpilot.errors import OriginalRepositoryModifiedError, PatchPilotError, SandboxError
 from patchpilot.ollama_client import OllamaClient
 from patchpilot.safety.limits import ExecutionBudget
 from patchpilot.schemas import (
@@ -97,6 +97,16 @@ class AgentOrchestrator:
                     "summary": baseline_result.summary,
                     "tests_run": baseline_result.tests_run,
                 },
+            )
+        except SandboxError as e:
+            logger.error(f"Sandbox error during baseline tests: {e}")
+            return self._build_failure_report(
+                run_id=run_id,
+                task=task,
+                status=RepairStatus.UNRESOLVED,
+                start_time=start_time,
+                start_mono=start_mono,
+                error_message=f"Sandbox error: {e}",
             )
         except Exception as e:
             logger.warning(f"Baseline test run could not be executed: {e}")

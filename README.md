@@ -91,53 +91,137 @@ flowchart TD
 ### Prerequisites
 
 - **Python 3.11 – 3.13**
-- **[Ollama](https://ollama.com/)** running locally:
-  ```powershell
-  ollama pull qwen3.5:4b
-  ```
-- **[Docker Desktop](https://www.docker.com/)** (recommended for sandboxed test execution).
+- **[Ollama](https://ollama.com/)** installed and running locally.
+- **[Docker Desktop](https://www.docker.com/)** installed and running (required for fail-closed containerized test execution).
 
-### 1. Installation
+---
 
-Clone the repository and set up a clean Python virtual environment:
+### Step-by-Step First-Run Workflow
 
+#### 1. Prepare Python Environment
+
+Clone the repository and set up a Python virtual environment:
+
+**Automated Setup (Windows PowerShell):**
+```powershell
+.\scripts\setup.ps1
+```
+The setup script auto-detects Python 3.11, 3.12, or 3.13, creates `.venv` if absent, installs package and developer dependencies, checks Ollama connectivity, prompts to pull `qwen3.5:4b` if missing, and automatically builds `patchpilot-sandbox:latest` if Docker is running.
+
+**Manual Setup:**
 ```powershell
 git clone https://github.com/akaKRISH/PatchPilot.git
 Set-Location PatchPilot
 
+# Create virtual environment using Python 3.11, 3.12, or 3.13
 py -3.13 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+*(On Linux / macOS: `python3.13 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`)*
+
+#### 2. Start Ollama and Pull Default Model
+
+Ensure the Ollama daemon is running and fetch the tested default model:
+```powershell
+ollama serve
+ollama pull qwen3.5:4b
 ```
 
-*(On Linux / macOS, substitute `.venv/bin/python` and `.venv/bin/pip`)*
-
-### 2. Build the Docker Sandbox Image
+#### 3. Build the Docker Sandbox Image
 
 Build the lightweight, self-contained Python test sandbox:
-
 ```powershell
 docker build -t patchpilot-sandbox:latest .\sandbox\
 ```
+Verify the Docker daemon is accessible with `docker info`.
 
-### 3. Verify System Health
+#### 4. Initialize Configuration (`patchpilot init`)
 
-Run the built-in diagnostic doctor to verify Ollama connectivity, Docker availability, and model readiness:
-
+Create `.patchpilot.toml` in your working directory with sensible, tested defaults:
 ```powershell
-.\.venv\Scripts\python.exe -m patchpilot doctor
+patchpilot init
+```
+- **Defaults:** Configures `model_name = "qwen3.5:4b"`, `ollama_base_url = "http://localhost:11434"`, and `think = false` (Ollama thinking disabled for fast tool calling).
+- **Overwrite Protection:** If `.patchpilot.toml` already exists, `patchpilot init` refuses to overwrite it to prevent data loss. Pass `--force` to explicitly overwrite.
+- **Custom Location:** Use `--path <custom-path>` to write the configuration to an alternative location or parent directory.
+
+#### 5. Verify Readiness (`patchpilot doctor`)
+
+Run the preflight health check to verify all services and permissions:
+```powershell
+patchpilot doctor
+```
+`doctor` validates 7 core readiness criteria:
+1. **Python Runtime:** Python `>= 3.11`
+2. **Configuration:** Valid `.patchpilot.toml` schema and field constraints
+3. **Ollama Server:** Local HTTP API reachability (`http://localhost:11434`)
+4. **Model Availability:** Configured model (`qwen3.5:4b`) installed in local Ollama tags
+5. **Docker CLI / Daemon:** Docker daemon reachable and responsive
+6. **Sandbox Image:** `patchpilot-sandbox:latest` built and available locally
+7. **Data Directory:** Data storage path (`.patchpilot-data`) writable
+
+**Verdict & Exit Codes:**
+- `System Status: READY` (exit code `0`): All prerequisites met; safe sandboxed repairs are ready to run.
+- `System Status: NOT READY` (exit code `1`): Identifies missing components with actionable resolution commands (e.g., `ollama serve`, `ollama pull qwen3.5:4b`, `docker build -t patchpilot-sandbox:latest .\sandbox\`).
+- *Optional:* Pass `--probe-tools` to test native model tool-calling capability with a lightweight probe.
+
+#### 6. Run the Safe Demo (`patchpilot demo`)
+
+Run an end-to-end self-healing repair demonstration on the bundled calculator project:
+```powershell
+patchpilot demo
+```
+- **Safety:** Executes strictly inside the Docker sandbox (`--network none`, read-only container). The original repository remains completely unmodified.
+- **Fail-Closed:** Halts immediately with exit code 1 if Docker or the sandbox image is missing.
+- **Output:** Reports the run ID, duration, attempt count, generated patch diff, and file artifact paths.
+
+#### 7. Repair Your Own Project & Inspect Artifacts
+
+Diagnose and repair a bug in your own repository:
+```powershell
+patchpilot repair `
+  --repo "C:\path\to\project" `
+  --task "Fix the failing test in calculator. Preserve public API." `
+  --test-suite pytest
+```
+
+Inspect run history and review the generated unified diff:
+```powershell
+# List all historical repair runs
+patchpilot runs list
+
+# Inspect detailed metrics and diff for a specific run
+patchpilot runs show <RUN_ID>
+```
+
+Apply the verified patch to your project:
+```powershell
+git apply .patchpilot-data\runs\<RUN_ID>.patch
 ```
 
 ---
 
 ## Repair Walkthrough
 
-PatchPilot includes a reproducible bug test case in [`examples/buggy_python_project`](examples/buggy_python_project). The project contains an off-by-one bug in a basic calculator utility where `add(a, b)` incorrectly returns `a + b + 1`.
+PatchPilot includes a reproducible bug test case in [`examples/buggy_python_project`](examples/buggy_python_project). The module [`calculator.py`](examples/buggy_python_project/calculator.py) contains an inverted operator bug where `add(a, b)` incorrectly subtracts `b` from `a`:
+
+```python
+def add(a: float, b: float) -> float:
+    """Return the sum of a and b.
+
+    BUG: Incorrectly subtracts b from a.
+    """
+    return a - b  # Defect: should be return a + b
+```
+
+The test suite in [`tests/test_calculator.py`](examples/buggy_python_project/tests/test_calculator.py) fails with `AssertionError: assert add(2, 3) == 5` (evaluating to `-1`).
 
 ### Run the Repair Agent
 
 ```powershell
-.\.venv\Scripts\python.exe -m patchpilot repair `
+patchpilot repair `
   --repo .\examples\buggy_python_project `
   --task "Fix the bug in the calculator's add function. Preserve the public API." `
   --test-suite pytest
@@ -145,26 +229,24 @@ PatchPilot includes a reproducible bug test case in [`examples/buggy_python_proj
 
 ### Execution Lifecycle
 
-1. **Preflight & Invariance Check:** PatchPilot verifies system health and records the initial SHA-256 hash of all source files.
+1. **Preflight & Invariance Check:** PatchPilot verifies system health and records an initial SHA-256 hash manifest of all source files.
 2. **Workspace Isolation:** A disposable copy is provisioned at `.patchpilot-data/workspaces/<run_id>/`.
-3. **Baseline Evaluation:** The existing test suite runs inside the Docker sandbox, capturing the failing test assertion.
-4. **Agent Inspection & Tool Calling:** The model inspects the repository layout, locates `calculator.py`, and inspects the implementation.
-5. **Targeted Edit:** The model applies a minimal surgical edit to `calculator.py` inside the temporary workspace.
-6. **Sandboxed Verification:** The test runner re-executes `pytest` in Docker. Tests pass with zero regressions.
-7. **Integrity Re-evaluation:** The original source directory is verified to have zero file changes.
-8. **Artifact Generation:** A unified diff and structured JSON report are written to `.patchpilot-data/runs/<run_id>/`.
+3. **Baseline Evaluation:** The test suite runs inside the Docker sandbox, capturing the failing test assertion.
+4. **Agent Inspection & Tool Calling:** The model inspects the repository layout, locates `calculator.py`, and reads the implementation.
+5. **Targeted Edit:** The model applies a minimal surgical edit (`return a + b`) inside the temporary workspace.
+6. **Sandboxed Verification:** The test runner re-executes `pytest` inside the Docker container. All tests pass with zero regressions.
+7. **Integrity Re-evaluation:** The original source directory is verified byte-for-byte against the initial SHA-256 manifest.
+8. **Artifact Generation:** The structured JSON report (`.patchpilot-data/runs/<run_id>.json`) and standalone unified diff (`.patchpilot-data/runs/<run_id>.patch`) are written to disk, and the operational event is logged in `.patchpilot-data/events.jsonl`.
 
 Review the resulting patch:
-
 ```powershell
-.\.venv\Scripts\python.exe -m patchpilot runs list
-.\.venv\Scripts\python.exe -m patchpilot runs show <RUN_ID>
+patchpilot runs list
+patchpilot runs show <RUN_ID>
 ```
 
 Apply the verified patch to your repository:
-
 ```powershell
-git apply .patchpilot-data\runs\<RUN_ID>\patch.diff
+git apply .patchpilot-data\runs\<RUN_ID>.patch
 ```
 
 ---
@@ -177,9 +259,9 @@ PatchPilot enforces security through deterministic software boundaries rather th
 | :--- | :--- |
 | **Path Traversal Containment** | All paths resolve against the workspace root. Traversal patterns (`..`), null bytes, and escaping symlinks trigger immediate validation errors (`PathTraversalError`, `SymlinkEscapeError`). |
 | **Secret Redaction** | Sensitive files (`.env`, `*.pem`, `*.key`, `id_rsa`, `.git`, `.venv`) are excluded during workspace cloning. Terminal outputs and stored run logs pass through regex redaction. |
-| **Command Whitelist** | The model has no terminal access. `run_tests` only accepts pre-approved test suites (`pytest`, `unittest`, `compileall`) with immutable argument templates. |
+| **Command Whitelist** | The model has no terminal access. `run_tests` only accepts pre-approved test suites (`pytest`, `unittest`, `compileall`, `jest`, `go_test`, `cargo_test`) with immutable argument templates. |
 | **Docker Sandbox** | Untrusted test suites run inside isolated containers with `--network none`, `--read-only`, unprivileged user privileges, and strict execution timeouts. |
-| **Execution Budgets** | Hard boundaries prevent runaway execution: maximum 3 repair attempts, 12 agent reasoning steps per attempt, and bounded tool calls. |
+| **Execution Budgets** | Hard boundaries prevent runaway execution: maximum 3 repair attempts, 12 agent reasoning steps per attempt, and bounded tool calls (24). |
 
 For complete threat vectors and mitigations, refer to [docs/SAFETY_MODEL.md](docs/SAFETY_MODEL.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
@@ -187,62 +269,58 @@ For complete threat vectors and mitigations, refer to [docs/SAFETY_MODEL.md](doc
 
 ## CLI Reference
 
-| Command | Purpose |
-| :--- | :--- |
-| `patchpilot doctor` | Inspects environment health: Ollama, Docker, installed models, and data paths. |
-| `patchpilot models` | Lists available local models retrieved from the Ollama daemon. |
-| `patchpilot chat "<msg>"` | Diagnostic endpoint to verify LLM latency and connectivity without running repairs. |
-| `patchpilot repair` | Initiates the bounded self-healing repair pipeline on a target repository. |
-| `patchpilot runs list` | Displays recorded historical repair runs with exit statuses and durations. |
-| `patchpilot runs show <ID>` | Displays detailed metrics, applied patches, and event logs for a specific run. |
-| `patchpilot eval --suite smoke` | Executes local benchmark evaluation suites from `evals/cases/manifest.json`. |
+| Command | Options | Purpose |
+| :--- | :--- | :--- |
+| `patchpilot init` | `[--path, -p <PATH>]`<br>`[--force, -f]` | Generates a valid `.patchpilot.toml` configuration with tested defaults (`qwen3.5:4b`, thinking disabled). Refuses overwrite unless `--force` is set. |
+| `patchpilot doctor` | `[--probe-tools]`<br>`[--config, -c <CONFIG>]` | Inspects environment health: Ollama, Docker sandbox, installed models, and data paths. Returns exit code 1 if dependencies are missing. |
+| `patchpilot demo` | `[--repo, -r <PATH>]`<br>`[--config, -c <CONFIG>]` | Runs the safe, sandboxed end-to-end repair demonstration on `examples/buggy_python_project`. Fails closed if Docker is absent. |
+| `patchpilot models` | `[--config, -c <CONFIG>]` | Lists available local models retrieved from the Ollama daemon. |
+| `patchpilot chat "<msg>"` | `[--config, -c <CONFIG>]` | Diagnostic endpoint to verify LLM latency and connectivity without running repairs. |
+| `patchpilot repair` | `--repo, -r <PATH>`<br>`--task, -t "<TASK>"`<br>`[--test-suite, -s <SUITE>]`<br>`[--test-target <TARGET>]`<br>`[--allow-host-execution]`<br>`[--config, -c <CONFIG>]` | Initiates the bounded self-healing repair pipeline on a target repository. Fast-fails if prerequisites are unmet before invoking model inference. |
+| `patchpilot eval` | `[--suite, -s <SUITE>]`<br>`[--allow-host-execution]`<br>`[--config, -c <CONFIG>]` | Executes local benchmark evaluation suites from `evals/cases/manifest.json`. Defaults to Docker sandboxing fail-closed. |
+| `patchpilot runs list` | `[--config, -c <CONFIG>]` | Displays recorded historical repair runs with exit statuses, durations, and attempt counts. |
+| `patchpilot runs show <ID>` | `[--config, -c <CONFIG>]` | Displays detailed metrics, unified diff, and status for a specific run ID. |
 
 ---
 
 ## Configuration
 
-PatchPilot can be configured via environment variables or a `.patchpilot.toml` file. Environment variables take precedence over configuration files.
+PatchPilot can be configured via environment variables or a `.patchpilot.toml` file. Environment variables take precedence over configuration file settings.
 
-| Setting | Environment Variable | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `ollama_host` | `PATCHPILOT_OLLAMA_HOST` | `http://localhost:11434` | Ollama service endpoint. |
-| `model` | `PATCHPILOT_MODEL` | `qwen3.5:4b` | Tested default model for tool calling. |
-| `ollama_think` | `PATCHPILOT_OLLAMA_THINK` | `false` | Disables verbose chain-of-thought for fast tool calls. |
-| `max_repair_attempts` | `PATCHPILOT_MAX_REPAIR_ATTEMPTS` | `3` | Maximum self-healing attempts. |
-| `max_reasoning_steps`| `PATCHPILOT_MAX_REASONING_STEPS` | `12` | Reasoning step budget per attempt. |
-| `container_timeout` | `PATCHPILOT_CONTAINER_TIMEOUT_SECONDS` | `120` | Maximum containerized test run duration. |
-| `sandbox_image` | `PATCHPILOT_SANDBOX_IMAGE` | `patchpilot-sandbox:latest` | Docker image tag for sandboxed tests. |
+| Setting | TOML Section | Environment Variable | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `model_name` | `[model] name` | `PATCHPILOT_MODEL_NAME` | `qwen3.5:4b` | Target Ollama model for reasoning & tool calling. |
+| `ollama_base_url` | `[model] ollama_base_url` | `PATCHPILOT_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server HTTP API endpoint. |
+| `request_timeout_seconds` | `[model] request_timeout_seconds` | `PATCHPILOT_REQUEST_TIMEOUT_SECONDS` | `180` | Ollama HTTP request timeout in seconds (5–600). |
+| `ollama_think` | `[model] think` | `PATCHPILOT_OLLAMA_THINK` / `PATCHPILOT_THINK` | `false` | Explicit Ollama thinking parameter (`false` disables chain-of-thought for fast tool calls). |
+| `max_repair_attempts` | `[agent] max_repair_attempts` | `PATCHPILOT_MAX_REPAIR_ATTEMPTS` | `3` | Maximum self-healing repair iterations (1–10). |
+| `max_agent_steps` | `[agent] max_agent_steps` | `PATCHPILOT_MAX_AGENT_STEPS` | `12` | Reasoning step budget per attempt (1–50). |
+| `max_tool_calls` | `[agent] max_tool_calls` | `PATCHPILOT_MAX_TOOL_CALLS` | `24` | Total budget of tool calls allowed (1–100). |
+| `max_context_characters` | `[agent] max_context_characters` | `PATCHPILOT_MAX_CONTEXT_CHARACTERS` | `50000` | Maximum context window character budget (1,000–200,000). |
+| `max_file_bytes` | `[safety] max_file_bytes` | `PATCHPILOT_MAX_FILE_BYTES` | `200000` | Maximum file size readable by agent (1 KB–10 MB). |
+| `test_timeout_seconds` | `[safety] test_timeout_seconds` | `PATCHPILOT_TEST_TIMEOUT_SECONDS` | `120` | Test runner timeout in seconds (5–600). |
+| `max_command_output_characters` | `[safety] max_command_output_characters` | `PATCHPILOT_MAX_COMMAND_OUTPUT_CHARACTERS` | `20000` | Maximum test output characters captured (500–100,000). |
+| `allow_host_execution` | `[safety] allow_host_execution` | `PATCHPILOT_ALLOW_HOST_EXECUTION` | `false` | Unsafe opt-in to execute repository tests on host without Docker. |
+| `data_dir` | `[storage] data_dir` | `PATCHPILOT_DATA_DIR` | `.patchpilot-data` | Directory storing runs, workspaces, and logs. |
+
+> **Docker Sandbox Image Note:** The containerized test runner (`TestRunner`) uses `patchpilot-sandbox:latest`, built from `sandbox/Dockerfile`.
 
 See [`.patchpilot.example.toml`](.patchpilot.example.toml) and [`.env.example`](.env.example) for reference configurations.
 
 ---
 
-## Repository Structure
+## Storage & Artifact Layout
+
+PatchPilot stores all operational data under `.patchpilot-data/` (configurable via `data_dir`):
 
 ```text
-patchpilot/
-├── src/patchpilot/
-│   ├── agent/           # Orchestrator, context builder, prompt templates, bounded repair loop
-│   ├── tools/           # Validated tool registry (inspect, search, read, edit, run_tests)
-│   ├── safety/          # Path containment, command policies, secret redaction, resource budgets
-│   ├── workspace/       # Isolated workspace manager, SHA-256 manifests, unified diff generator
-│   ├── verification/    # Baseline test runner, Docker execution, regression analysis engine
-│   ├── storage/         # RunStore (JSON reports and append-only JSONL event logs)
-│   ├── evaluation/      # Local benchmark evaluation harness
-│   ├── cli.py           # Typer-powered CLI interface
-│   ├── config.py        # Pydantic settings and environment loader
-│   ├── ollama_client.py # Robust local Ollama HTTP client with tool extraction
-│   ├── schemas.py       # Pydantic data models and tool contracts
-│   └── errors.py        # Typed exception hierarchy
-├── tests/
-│   ├── unit/            # Isolated unit tests with mocked providers
-│   ├── security/        # Path traversal, symlink boundary, and immutability security tests
-│   └── integration/     # Optional live Ollama & Docker integration tests
-├── examples/            # Bundled test repositories for reproduction and verification
-├── evals/               # Deterministic evaluation cases and manifests
-├── sandbox/             # Dockerfile and specification for the unprivileged Python test sandbox
-├── scripts/             # Developer verification and quality gate automation scripts
-└── docs/                # Architecture, safety specifications, and developer guides
+.patchpilot-data/
+├── runs/
+│   ├── <run_id>.json       # Machine-readable RunReport (status, metrics, diff)
+│   └── <run_id>.patch      # Unified diff patch file ready for git apply
+├── workspaces/
+│   └── <run_id>/           # Ephemeral isolated workspace copies
+└── events.jsonl            # Append-only JSONL operational event log
 ```
 
 ---
@@ -271,8 +349,8 @@ Or execute the checks individually:
 .\.venv\Scripts\python.exe -m pytest -m "not integration"
 ```
 
-> **Note on Test Results:**
-> The standard offline test suite comprises **75 passed tests and 1 skipped test**. The single skipped test (`tests/security/test_symlink_escape.py::test_workspace_rejects_external_symlink`) is an environment-dependent check that requires Windows Developer Mode or administrative privileges to create native filesystem symlinks. It automatically executes on POSIX environments and Windows systems with symlink privileges enabled.
+> **Note on Symlink Tests on Windows:**
+> Filesystem symlink creation checks in `tests/security/test_symlink_escape.py` require Windows Developer Mode or administrative privileges to create native symlinks on Windows. They execute automatically on POSIX environments or when Windows Developer Mode is enabled, and gracefully skip otherwise.
 
 ---
 
