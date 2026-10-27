@@ -51,11 +51,8 @@ def run_smoke_benchmark(config: PatchPilotConfig) -> EvalReport:
     results: list[EvalResult] = []
     total_start = time.monotonic()
 
-    # Enable host execution for benchmark evaluation if running locally
-    cfg_copy = config.model_copy()
-    cfg_copy.allow_host_execution = True
-
-    orchestrator = AgentOrchestrator(cfg_copy)
+    # Benchmark uses Docker sandboxing by default (fail-closed) unless allow_host_execution is explicitly set
+    orchestrator = AgentOrchestrator(config)
 
     for case in cases:
         case_start = time.monotonic()

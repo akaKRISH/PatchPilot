@@ -97,14 +97,21 @@ flowchart TD
   ```
 - **[Docker Desktop](https://www.docker.com/)** (recommended for sandboxed test execution).
 
-### 1. Installation
+### 1. Installation & Environment Setup
 
-Clone the repository and set up a clean Python virtual environment:
+You can use the automated PowerShell setup script on Windows:
+
+```powershell
+.\scripts\setup.ps1
+```
+
+Or perform manual setup:
 
 ```powershell
 git clone https://github.com/akaKRISH/PatchPilot.git
 Set-Location PatchPilot
 
+# Detect Python 3.11, 3.12, or 3.13
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
@@ -112,7 +119,13 @@ py -3.13 -m venv .venv
 
 *(On Linux / macOS, substitute `.venv/bin/python` and `.venv/bin/pip`)*
 
-### 2. Build the Docker Sandbox Image
+### 2. Initialize Configuration & Build Docker Sandbox Image
+
+Initialize your local `.patchpilot.toml` configuration with tested defaults (`qwen3.5:4b`, Ollama thinking disabled):
+
+```powershell
+.\.venv\Scripts\python.exe -m patchpilot init
+```
 
 Build the lightweight, self-contained Python test sandbox:
 
@@ -122,10 +135,20 @@ docker build -t patchpilot-sandbox:latest .\sandbox\
 
 ### 3. Verify System Health
 
-Run the built-in diagnostic doctor to verify Ollama connectivity, Docker availability, and model readiness:
+Run the diagnostic doctor to verify Ollama connectivity, Docker sandbox availability, model presence, and filesystem readiness:
 
 ```powershell
 .\.venv\Scripts\python.exe -m patchpilot doctor
+```
+
+If any prerequisite is missing, `doctor` returns a `NOT READY` status with exact remediation commands.
+
+### 4. Run the Safe Demo
+
+Run the safe, end-to-end demonstration repair on the bundled buggy calculator project:
+
+```powershell
+.\.venv\Scripts\python.exe -m patchpilot demo
 ```
 
 ---
@@ -189,13 +212,15 @@ For complete threat vectors and mitigations, refer to [docs/SAFETY_MODEL.md](doc
 
 | Command | Purpose |
 | :--- | :--- |
-| `patchpilot doctor` | Inspects environment health: Ollama, Docker, installed models, and data paths. |
+| `patchpilot init` | Generates a valid `.patchpilot.toml` configuration with tested defaults (`qwen3.5:4b`, Ollama thinking disabled). |
+| `patchpilot doctor` | Inspects environment health: Ollama, Docker sandbox, installed models, and data paths. Returns exit code 1 if dependencies are missing. |
+| `patchpilot demo` | Runs the safe, sandboxed end-to-end repair demonstration using the bundled calculator project. |
 | `patchpilot models` | Lists available local models retrieved from the Ollama daemon. |
 | `patchpilot chat "<msg>"` | Diagnostic endpoint to verify LLM latency and connectivity without running repairs. |
-| `patchpilot repair` | Initiates the bounded self-healing repair pipeline on a target repository. |
+| `patchpilot repair` | Initiates the bounded self-healing repair pipeline on a target repository. Fast-fails if prerequisites are unmet. |
 | `patchpilot runs list` | Displays recorded historical repair runs with exit statuses and durations. |
 | `patchpilot runs show <ID>` | Displays detailed metrics, applied patches, and event logs for a specific run. |
-| `patchpilot eval --suite smoke` | Executes local benchmark evaluation suites from `evals/cases/manifest.json`. |
+| `patchpilot eval --suite smoke` | Executes local benchmark evaluation suites in Docker sandbox (or host with `--allow-host-execution`). |
 
 ---
 
