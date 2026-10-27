@@ -30,7 +30,8 @@ def test_repair_fails_fast_when_repo_not_found(tmp_path: Path) -> None:
     ):
         result = runner.invoke(app, ["repair", "--repo", str(nonexistent), "--task", "Fix bug"])
         assert result.exit_code == 1
-        assert "does not exist or is not a directory" in result.stdout
+        normalized_output = " ".join(result.stdout.split())
+        assert "does not exist or is not a directory" in normalized_output
         mock_client_cls.assert_not_called()
         mock_orchestrator_cls.assert_not_called()
 
